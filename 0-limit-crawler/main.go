@@ -10,14 +10,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"sync"
+	"time"
 )
 
 // Crawl uses `fetcher` from the `mockfetcher.go` file to imitate a
 // real crawler. It crawls until the maximum depth has reached.
-func Crawl(url string, depth int, wg *sync.WaitGroup) {
-	defer wg.Done()
+func Crawl(url string, depth int, allowCrawlChannel *chan interface{}) {
 
 	if depth <= 0 {
 		return
@@ -31,19 +31,33 @@ func Crawl(url string, depth int, wg *sync.WaitGroup) {
 
 	fmt.Printf("found: %s %q\n", url, body)
 
-	wg.Add(len(urls))
 	for _, u := range urls {
 		// Do not remove the `go` keyword, as Crawl() must be
 		// called concurrently
-		go Crawl(u, depth-1, wg)
+		go func() {
+			<-*allowCrawlChannel
+			fmt.Println(fmt.Sprintf("Crawling url %s at timestamp %s", url, time.Now()))
+			Crawl(u, depth-1, allowCrawlChannel)
+		}()
 	}
 	return
 }
 
 func main() {
-	var wg sync.WaitGroup
+	allowCrawlChannel := make(chan interface{})
+	ticker := time.NewTicker(1 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				break
+			case <-ticker.C:
+				allowCrawlChannel <- nil
+			}
+		}
+	}()
 
-	wg.Add(1)
-	Crawl("http://golang.org/", 4, &wg)
-	wg.Wait()
+	Crawl("http://golang.org/", 4, &allowCrawlChannel)
+	cancel()
 }
