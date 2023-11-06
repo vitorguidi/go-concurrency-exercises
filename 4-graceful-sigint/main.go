@@ -16,27 +16,29 @@ package main
 import (
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 )
 
 func main() {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
 	proc := MockProcess{}
 	go func() {
 		proc.Run()
 	}()
 	sig := make(chan os.Signal, 1)
-	done := make(chan interface{})
 	signal.Notify(sig, syscall.SIGINT)
-	<-sig
 	go func() {
+		<-sig
+		wg.Done()
 		proc.Stop()
-		done <- nil
+		os.Exit(0)
 	}()
-
+	wg.Wait()
 	select {
 	case <-sig:
 		os.Exit(1)
-	case <-done:
-		os.Exit(0)
 	}
 }
