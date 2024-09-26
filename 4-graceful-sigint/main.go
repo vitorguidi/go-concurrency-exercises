@@ -13,10 +13,32 @@
 
 package main
 
-func main() {
-	// Create a process
-	proc := MockProcess{}
+import (
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+)
 
-	// Run the process (blocking)
-	proc.Run()
+func main() {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	proc := MockProcess{}
+	go func() {
+		proc.Run()
+	}()
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT)
+	go func() {
+		<-sig
+		wg.Done()
+		proc.Stop()
+		os.Exit(0)
+	}()
+	wg.Wait()
+	select {
+	case <-sig:
+		os.Exit(1)
+	}
 }
